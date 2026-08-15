@@ -7,9 +7,12 @@
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overscroll-behavior: none; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; overflow: hidden; }
 
-    #video-container { position: relative; width: 100vw; height: 100vh; }
+    /* iOS Safari 嘅網址列/底部工具列會令 100vh 量出嚟嘅高度包住睇唔到嘅範圍，
+       用 100dvh（動態視窗高度）先會啱返實際睇到嘅畫面，唔使afterwards要scroll */
+    #video-container { position: relative; width: 100vw; height: 100vh; height: 100dvh; }
     video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
     /* 掃瞄框指引 + 結果卡片：由上而下排列，結果卡片會顯示在框下面 */
@@ -52,23 +55,28 @@
     .bg-medium    { background: #e65100 !important; border-color: #ff9800 !important; color: #ffffff; } /* Medium 黃橙色 */
     .bg-low       { background: #424242 !important; border-color: #9e9e9e !important; color: #e0e0e0; } /* Low 灰色 */
 
-    #status { position: absolute; bottom: 78px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 10; }
+    #status { position: absolute; bottom: calc(92px + env(safe-area-inset-bottom)); left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 10; }
 
-    /* 手動輸入：貼喺畫面最底，隨時可以打字檢查，唔會被掃瞄框遮住 */
+    /* 手動輸入：刻意離開畫面最底一段距離，避開 iPhone Safari 嘅底部工具列/
+       Home Indicator，確保唔使scroll都睇得同撳得到 */
     #manual-input-wrap {
-      position: absolute; bottom: 0; left: 0; width: 100%;
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-      background: rgba(0,0,0,0.85); z-index: 20;
+      position: absolute; left: 0; width: 100%;
+      bottom: calc(28px + env(safe-area-inset-bottom));
+      padding: 10px 16px; z-index: 20;
       display: flex; align-items: center; gap: 8px;
     }
     #manual-input {
-      flex: 1; padding: 12px 14px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.25);
-      background: rgba(255,255,255,0.08); color: #fff; font-size: 16px; outline: none;
-      text-transform: uppercase;
+      flex: 1; padding: 14px 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.35);
+      background: rgba(20,20,20,0.92); color: #fff; font-size: 17px; outline: none;
+      text-transform: uppercase; box-shadow: 0 6px 20px rgba(0,0,0,0.6);
     }
     #manual-input::placeholder { color: rgba(255,255,255,0.45); }
     #manual-input.not-found { border-color: #ff5252; }
-    #manual-label { font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap; }
+    #manual-label {
+      font-size: 12px; color: rgba(255,255,255,0.85); white-space: nowrap;
+      background: rgba(20,20,20,0.92); padding: 8px 10px; border-radius: 10px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+    }
   </style>
 </head>
 <body>
