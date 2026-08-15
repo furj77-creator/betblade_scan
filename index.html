@@ -79,6 +79,18 @@
     #manual-input::placeholder { color: rgba(255,255,255,0.45); }
     #manual-input.not-found { border-color: #ff5252; }
     #manual-label { font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap; }
+
+    /* 偵錯面板：實時顯示「攞去做OCR嗰嚿畫面」同「辨識出嚟嘅原始文字」，
+       等我哋可以親眼確認擷取範圍/二值化係咪啱，唔使再靠估 */
+    #debug-panel {
+      position: absolute; top: 8px; right: 8px; z-index: 30;
+      background: rgba(0,0,0,0.85); border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 8px; padding: 6px; max-width: 46vw;
+      display: flex; flex-direction: column; gap: 4px; align-items: center;
+    }
+    #debug-canvas { width: 100%; max-height: 90px; background: #333; border-radius: 4px; }
+    #debug-text { font-size: 10px; color: #0f0; word-break: break-all; text-align: left; width: 100%; max-height: 60px; overflow-y: auto; }
+    #debug-text.err { color: #ff5252; }
   </style>
 </head>
 <body>
@@ -99,6 +111,11 @@
   </div>
 
   <div id="status">正在同步 Google Sheet 資料...</div>
+
+  <div id="debug-panel">
+    <canvas id="debug-canvas"></canvas>
+    <div id="debug-text">等待 OCR 引擎啟動...</div>
+  </div>
 </div>
 
 <div id="manual-input-wrap">
@@ -168,25 +185,38 @@
       });
       video.srcObject = stream;
       video.onloadedmetadata = () => {
+        setDebugText(`鏡頭已啟動 (${video.videoWidth}x${video.videoHeight})，載入 OCR 引擎中...`);
         initOCR(video);
       };
     } catch (err) {
+      setDebugText('❌ 相機錯誤：' + (err && err.message ? err.message : err), true);
       alert('無法存取相機，請允許相機權限！');
     }
   }
 
+  function setDebugText(msg, isErr) {
+    const el = document.getElementById('debug-text');
+    if (!el) return;
+    el.innerText = msg;
+    el.classList.toggle('err', !!isErr);
+  }
+
   // 3. 初始化 OCR 引擎
   async function initOCR(video) {
-    worker = await Tesseract.createWorker('eng');
-    await worker.setParameters({
-      // 只認型號會出現的字元，減少雜訊干擾
-      tessedit_char_whitelist: 'BXUXCXbxuxcx-0123456789',
-      // 型號色帶通常係「一小段文字區塊」（型號 + 產品名兩行），
-      // 用 6 = 當成單一文字區塊處理，比預設整頁模式快又準
-      tessedit_pageseg_mode: '6',
-    });
-
-    scanLoop(video);
+    try {
+      worker = await Tesseract.createWorker('eng');
+      await worker.setParameters({
+        // 只認型號會出現的字元，減少雜訊干擾
+        tessedit_char_whitelist: 'BXUXCXbxuxcx-0123456789',
+        // 型號色帶通常係「一小段文字區塊」（型號 + 產品名兩行），
+        // 用 6 = 當成單一文字區塊處理，比預設整頁模式快又準
+        tessedit_pageseg_mode: '6',
+      });
+      setDebugText('✅ OCR 引擎就緒，開始掃瞄...');
+      scanLoop(video);
+    } catch (err) {
+      setDebugText('❌ OCR 引擎載入失敗：' + (err && err.message ? err.message : err), true);
+    }
   }
 
   // 4. 座標轉換：video 用咗 object-fit:cover，螢幕上見到嘅畫面
@@ -275,9 +305,12 @@
   }
 
   // 6. 擷取指定 DOM 元素對應嘅原生像素範圍並做 OCR，回傳是否已成功配對顯示
-  async function scanElement(video, canvas, ctx, el) {
+  async function scanElement(video, canvas, ctx, el, label) {
     const crop = getVideoCropFromElement(video, el);
-    if (!crop || crop.w <= 0 || crop.h <= 0) return false;
+    if (!crop || crop.w <= 0 || crop.h <= 0) {
+      setDebugText(`[${label}] 攞唔到擷取範圍 (crop=${JSON.stringify(crop)})`, true);
+      return false;
+    }
 
     const scale = crop.h < 220 ? 2 : 1;
     canvas.width = crop.w * scale;
@@ -289,8 +322,25 @@
     otsuBinarizeAndInvert(imgData);
     ctx.putImageData(imgData, 0, 0);
 
-    const { data: { text } } = await worker.recognize(canvas);
-    return processOCRText(text);
+    // 將實際攞去做OCR嗰嚿畫面畫落偵錯面板，等使用者親眼睇到擷取範圍/二值化效果
+    const dbgCanvas = document.getElementById('debug-canvas');
+    if (dbgCanvas) {
+      dbgCanvas.width = canvas.width;
+      dbgCanvas.height = canvas.height;
+      const dbgCtx = dbgCanvas.getContext('2d');
+      dbgCtx.drawImage(canvas, 0, 0);
+    }
+
+    try {
+      const { data: { text } } = await worker.recognize(canvas);
+      const cleaned = (text || '').replace(/\s+/g, ' ').trim();
+      const matched = processOCRText(text);
+      setDebugText(`[${label}] 辨識到: "${cleaned || '(空白)'}"${matched ? ' ✅ 命中!' : ''}`);
+      return matched;
+    } catch (err) {
+      setDebugText(`[${label}] ❌ OCR辨識錯誤: ` + (err && err.message ? err.message : err), true);
+      return false;
+    }
   }
 
   // 7. 主掃瞄迴圈：優先鎖定黃框（型號色帶），
@@ -304,11 +354,15 @@
 
     while (running) {
       tickCount++;
+      try {
+        let matched = await scanElement(video, canvas, ctx, targetBandEl, '黃框');
 
-      let matched = await scanElement(video, canvas, ctx, targetBandEl);
-
-      if (!matched && tickCount % 3 === 0) {
-        matched = await scanElement(video, canvas, ctx, scanBoxEl);
+        if (!matched && tickCount % 3 === 0) {
+          matched = await scanElement(video, canvas, ctx, scanBoxEl, '綠框備援');
+        }
+      } catch (err) {
+        // 保護迴圈本身唔會因為單次錯誤而完全停止掃瞄
+        setDebugText('❌ 掃瞄迴圈錯誤：' + (err && err.message ? err.message : err), true);
       }
 
       await sleep(120);
