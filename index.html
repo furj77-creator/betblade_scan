@@ -8,11 +8,16 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; overscroll-behavior: none; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; overflow: hidden; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #000; color: #fff; overflow: hidden;
+      display: flex; flex-direction: column;
+      height: 100vh; height: 100dvh; /* dvh 跟實際可見畫面，vh 做舊機備用 */
+    }
 
-    /* iOS Safari 嘅網址列/底部工具列會令 100vh 量出嚟嘅高度包住睇唔到嘅範圍，
-       用 100dvh（動態視窗高度）先會啱返實際睇到嘅畫面，唔使afterwards要scroll */
-    #video-container { position: relative; width: 100vw; height: 100vh; height: 100dvh; }
+    /* 相機區佔晒剩餘空間，input bar 會自然貼喺佢個底，
+       跟實際 browser 可見範圍嘅底部，唔使自己估位/寫死像素 */
+    #video-container { position: relative; width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden; }
     video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
     /* 掃瞄框指引 + 結果卡片：由上而下排列，結果卡片會顯示在框下面 */
@@ -55,28 +60,25 @@
     .bg-medium    { background: #e65100 !important; border-color: #ff9800 !important; color: #ffffff; } /* Medium 黃橙色 */
     .bg-low       { background: #424242 !important; border-color: #9e9e9e !important; color: #e0e0e0; } /* Low 灰色 */
 
-    #status { position: absolute; bottom: calc(92px + env(safe-area-inset-bottom)); left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 10; }
+    #status { position: absolute; bottom: 12px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 10; }
 
-    /* 手動輸入：刻意離開畫面最底一段距離，避開 iPhone Safari 嘅底部工具列/
-       Home Indicator，確保唔使scroll都睇得同撳得到 */
+    /* 手動輸入：唔再絕對定位/寫死幾多px，改成正常文件流嘅最後一個區塊，
+       body 高度用 dvh 鎖住實際可見畫面，呢個bar自然貼喺真正嘅底部，唔會被
+       Safari 底部工具列遮住，亦唔會令成頁可以scroll */
     #manual-input-wrap {
-      position: absolute; left: 0; width: 100%;
-      bottom: calc(28px + env(safe-area-inset-bottom));
-      padding: 10px 16px; z-index: 20;
+      flex: 0 0 auto; width: 100%;
+      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+      background: rgba(10,10,10,0.95); z-index: 20;
       display: flex; align-items: center; gap: 8px;
     }
     #manual-input {
       flex: 1; padding: 14px 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.35);
-      background: rgba(20,20,20,0.92); color: #fff; font-size: 17px; outline: none;
-      text-transform: uppercase; box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      background: rgba(255,255,255,0.08); color: #fff; font-size: 17px; outline: none;
+      text-transform: uppercase;
     }
     #manual-input::placeholder { color: rgba(255,255,255,0.45); }
     #manual-input.not-found { border-color: #ff5252; }
-    #manual-label {
-      font-size: 12px; color: rgba(255,255,255,0.85); white-space: nowrap;
-      background: rgba(20,20,20,0.92); padding: 8px 10px; border-radius: 10px;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
-    }
+    #manual-label { font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap; }
   </style>
 </head>
 <body>
@@ -97,11 +99,11 @@
   </div>
 
   <div id="status">正在同步 Google Sheet 資料...</div>
+</div>
 
-  <div id="manual-input-wrap">
-    <span id="manual-label">手動輸入</span>
-    <input id="manual-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="例如 BX48 / BX-48" />
-  </div>
+<div id="manual-input-wrap">
+  <span id="manual-label">手動輸入</span>
+  <input id="manual-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="例如 BX48 / BX-48" />
 </div>
 
 <script>
