@@ -12,17 +12,24 @@
     #video-container { position: relative; width: 100vw; height: 100vh; }
     video { width: 100%; height: 100%; object-fit: cover; }
 
-    /* 掃瞄框指引 + 結果卡片：由上而下排列，結果卡片會顯示在綠框下面 */
+    /* 掃瞄框指引 + 結果卡片：由上而下排列，結果卡片會顯示在框下面 */
     .overlay {
-      position: absolute; top: 18%; left: 0; width: 100%;
+      position: absolute; top: 14%; left: 0; width: 100%;
       display: flex; flex-direction: column; align-items: center; gap: 16px;
       pointer-events: none; z-index: 5;
     }
+    /* 掃瞄框對準盒身即可，實際辨識鎖定盒底型號色帶，不需要精準對齊文字 */
     .scan-box {
-      width: 88vw; height: 34vw; max-width: 380px; max-height: 150px;
+      width: 90vw; height: 62vw; max-width: 400px; max-height: 280px;
       border: 3px dashed #00ffcc; border-radius: 12px;
       box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.5);
-      flex-shrink: 0;
+      flex-shrink: 0; position: relative;
+    }
+    /* 標示實際鎖定辨識的色帶範圍，讓使用者知道要把型號那條色帶放喺框內下方 */
+    .scan-target-band {
+      position: absolute; left: 4%; right: 4%; bottom: 4%; height: 26%;
+      border: 2px solid rgba(255, 215, 0, 0.85); border-radius: 6px;
+      background: rgba(255, 215, 0, 0.08);
     }
 
     /* 結果卡片：置於掃瞄框正下方 */
@@ -31,7 +38,7 @@
       padding: 16px; border-radius: 16px; text-align: center;
       transition: all 0.2s ease; display: none; background: #222;
       box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 10;
-      max-height: 40vh; overflow-y: auto; border: 2px solid rgba(255,255,255,0.2);
+      max-height: 34vh; overflow-y: auto; border: 2px solid rgba(255,255,255,0.2);
       pointer-events: auto;
     }
     #result-model { font-size: 32px; font-weight: 900; letter-spacing: 1px; }
@@ -54,7 +61,9 @@
   <video id="webcam" autoplay playsinline muted></video>
 
   <div class="overlay">
-    <div class="scan-box"></div>
+    <div class="scan-box">
+      <div class="scan-target-band"></div>
+    </div>
     <div id="result-card">
       <div id="result-model">--</div>
       <div id="result-price">--</div>
@@ -69,8 +78,11 @@
 <script>
   const SHEET_ID = '1wNFpe9U1bgbRGtU6uNlpkpFgrX-ictuisUpOLDqbmG4';
   let dbData = {};
-  let isProcessing = false;
   let worker = null;
+  let running = false;
+  let tickCount = 0;
+
+  const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
   // 1. 從 Google Sheet 抓取最新 Price / Priority 資料
   //    Sheet 內有兩個並排表格：A-D 欄（Model / Retail Price / Priority / notes）
@@ -135,82 +147,138 @@
   // 3. 初始化 OCR 引擎
   async function initOCR(video) {
     worker = await Tesseract.createWorker('eng');
-    // 只對英文字母、數字和連字號做辨識，大幅提升速度與準確度
     await worker.setParameters({
+      // 只認型號會出現的字元，減少雜訊干擾
       tessedit_char_whitelist: 'BXUXCXbxuxcx-0123456789',
-      // Sparse text：盒面上文字排版鬆散、方向不一，用 sparse text 模式
-      // 比預設的整段落模式更容易在鬆散版面上抓到型號字串
-      tessedit_pageseg_mode: '11',
+      // 型號色帶通常係「一小段文字區塊」（型號 + 產品名兩行），
+      // 用 6 = 當成單一文字區塊處理，比預設整頁模式快又準
+      tessedit_pageseg_mode: '6',
     });
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-
-    setInterval(async () => {
-      if (isProcessing || !worker) return;
-      isProcessing = true;
-
-      // 擴大擷取範圍（比綠框大一些），減少「一定要精準對準型號」的要求，
-      // 只要盒面大致落在畫面中央就能掃到
-      const boxWidth = video.videoWidth * 0.9;
-      const boxHeight = video.videoHeight * 0.45;
-      const startX = (video.videoWidth - boxWidth) / 2;
-      const startY = (video.videoHeight - boxHeight) / 2;
-
-      // 放大 2 倍再做辨識，提高小字/細字的辨識率
-      const scale = 2;
-      canvas.width = boxWidth * scale;
-      canvas.height = boxHeight * scale;
-
-      ctx.drawImage(video, startX, startY, boxWidth, boxHeight, 0, 0, canvas.width, canvas.height);
-
-      // 影像增強：提高對比度 (二值化處理，讓文字更清晰)
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
-
-      // 依畫面平均亮度動態調整二值化門檻，適應不同光源/包裝底色
-      let sum = 0;
-      for (let i = 0; i < data.length; i += 4) {
-        sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
-      }
-      const avgBrightness = sum / (data.length / 4);
-      const threshold = Math.min(160, Math.max(90, avgBrightness - 20));
-
-      for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        const color = avg > threshold ? 255 : 0; // 黑白化
-        data[i] = color;
-        data[i + 1] = color;
-        data[i + 2] = color;
-      }
-      ctx.putImageData(imgData, 0, 0);
-
-      const { data: { text } } = await worker.recognize(canvas);
-      processOCRText(text);
-
-      isProcessing = false;
-    }, 350); // 每 0.35 秒掃瞄一次
+    scanLoop(video);
   }
 
-  // 4. 解析辨識文字並對比清單
+  // 4. Otsu 自動二值化門檻 + 自動判斷是否需要反色
+  //    盒底色帶可能係深色底白字（例：藍底白字），也可能係淺色底深字，
+  //    Otsu 可以自動找到最佳分界點，再用「面積佔多數 = 底色」的邏輯自動反色，
+  //    確保最終永遠輸出「白底黑字」餵俾 Tesseract（辨識率最好的格式）
+  function otsuBinarizeAndInvert(imgData) {
+    const data = imgData.data;
+    const hist = new Array(256).fill(0);
+    const grayVals = new Uint8ClampedArray(data.length / 4);
+
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+      grayVals[p] = gray;
+      hist[Math.floor(gray)]++;
+    }
+
+    const total = grayVals.length;
+    let sum = 0;
+    for (let t = 0; t < 256; t++) sum += t * hist[t];
+
+    let sumB = 0, wB = 0, varMax = 0, threshold = 128;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t];
+      if (wB === 0) continue;
+      const wF = total - wB;
+      if (wF === 0) break;
+      sumB += t * hist[t];
+      const mB = sumB / wB;
+      const mF = (sum - sumB) / wF;
+      const varBetween = wB * wF * (mB - mF) * (mB - mF);
+      if (varBetween > varMax) {
+        varMax = varBetween;
+        threshold = t;
+      }
+    }
+
+    // 判斷面積比例：多數像素當成底色，少數當成文字
+    let darkCount = 0;
+    for (let p = 0; p < total; p++) {
+      if (grayVals[p] <= threshold) darkCount++;
+    }
+    const lightCount = total - darkCount;
+    // 深色像素佔多數 => 底色偏深、文字偏淺 => 需要反色，令最終文字變黑、底變白
+    const invert = darkCount > lightCount;
+
+    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+      let isDark = grayVals[p] <= threshold;
+      if (invert) isDark = !isDark;
+      const color = isDark ? 0 : 255;
+      data[i] = color; data[i + 1] = color; data[i + 2] = color;
+    }
+
+    return imgData;
+  }
+
+  // 5. 擷取指定比例區域並做 OCR，回傳是否已成功配對顯示
+  async function scanRegion(video, canvas, ctx, ratios) {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return false;
+
+    let cropW = vw * ratios.w;
+    let cropH = vh * ratios.h;
+    const startX = vw * ratios.x;
+    const startY = vh * ratios.y;
+
+    // 區域太細（例如型號色帶）就放大 2 倍，加強細字辨識
+    const scale = cropH < 220 ? 2 : 1;
+    canvas.width = cropW * scale;
+    canvas.height = cropH * scale;
+
+    ctx.drawImage(video, startX, startY, cropW, cropH, 0, 0, canvas.width, canvas.height);
+
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    otsuBinarizeAndInvert(imgData);
+    ctx.putImageData(imgData, 0, 0);
+
+    const { data: { text } } = await worker.recognize(canvas);
+    return processOCRText(text);
+  }
+
+  // 6. 主掃瞄迴圈：優先鎖定盒底型號色帶（最快、最少干擾），
+  //    每 3 次額外掃一次較大範圍當備援，避免色帶位置跟參考圖略有出入時完全掃不到
+  async function scanLoop(video) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    running = true;
+
+    while (running) {
+      tickCount++;
+
+      // 主要區域：畫面下方 30% （型號色帶通常喺呢度）
+      const bottomBand = { x: 0.04, y: 0.66, w: 0.92, h: 0.32 };
+      let matched = await scanRegion(video, canvas, ctx, bottomBand);
+
+      // 備援區域：每 3 次掃一次較大範圍，涵蓋色帶位置較高或盒身比例不同嘅情況
+      if (!matched && tickCount % 3 === 0) {
+        const wideArea = { x: 0.05, y: 0.08, w: 0.9, h: 0.88 };
+        matched = await scanRegion(video, canvas, ctx, wideArea);
+      }
+
+      await sleep(120);
+    }
+  }
+
+  // 7. 解析辨識文字並對比清單
   function processOCRText(ocrText) {
-    if (!ocrText) return;
+    if (!ocrText) return false;
     const cleanText = ocrText.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 
     // 匹配 BX09, UX03, CX11, BX-09, UX-03 等格式（容許無連字號）
     const match = cleanText.match(/(BX|UX|CX)\d{2}/);
+    if (!match) return false;
 
-    if (match) {
-      const detectedKey = match[0]; // e.g. "BX09"
+    const detectedKey = match[0];
+    const item = dbData[detectedKey];
+    if (!item) return false;
 
-      if (dbData[detectedKey]) {
-        const item = dbData[detectedKey];
-        showResult(item.rawModel, item.price, item.priority, item.note);
-      }
-    }
+    showResult(item.rawModel, item.price, item.priority, item.note);
+    return true;
   }
 
-  // 5. 渲染 UI 與 Priority 顏色
+  // 8. 渲染 UI 與 Priority 顏色
   function showResult(model, price, priority, note) {
     const card = document.getElementById('result-card');
     const modelEl = document.getElementById('result-model');
@@ -225,7 +293,6 @@
     priorityEl.innerText = priority;
     noteEl.innerText = note ? `備註：${note}` : '（無備註）';
 
-    // 重置背景顏色 Class
     card.className = '';
     const prioLower = priority.toLowerCase();
 
