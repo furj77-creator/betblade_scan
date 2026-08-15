@@ -12,7 +12,7 @@
     #video-container { position: relative; width: 100vw; height: 100vh; }
     video { width: 100%; height: 100%; object-fit: cover; }
     
-    /* 掃瞄框指引 - 提高集中度 */
+    /* 掃瞄框指引 */
     .overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -25,23 +25,23 @@
     }
     .instruction { margin-top: 12px; font-size: 14px; background: rgba(0,0,0,0.8); padding: 6px 14px; border-radius: 20px; color: #00ffcc; font-weight: bold; }
 
-    /* 結果卡片：移至中上方 (Top 12%)，避免被遮擋 */
+    /* 結果卡片：移至中上方 */
     #result-card {
-      position: absolute; top: 12%; left: 5%; width: 90%;
+      position: absolute; top: 10%; left: 5%; width: 90%;
       padding: 16px; border-radius: 16px; text-align: center;
       transition: all 0.2s ease; display: none; background: #222;
       box-shadow: 0 10px 30px rgba(0,0,0,0.8); z-index: 10;
-      max-height: 35vh; overflow-y: auto; border: 2px solid rgba(255,255,255,0.2);
+      max-height: 40vh; overflow-y: auto; border: 3px solid rgba(255,255,255,0.3);
     }
-    #result-model { font-size: 32px; font-weight: 900; letter-spacing: 1px; }
-    #result-priority { font-size: 24px; font-weight: 800; margin: 4px 0 8px 0; text-transform: uppercase; }
-    #result-note { font-size: 15px; line-height: 1.4; background: rgba(0,0,0,0.25); padding: 8px; border-radius: 8px; text-align: left; }
+    #result-model { font-size: 34px; font-weight: 900; letter-spacing: 1px; }
+    #result-priority { font-size: 26px; font-weight: 800; margin: 4px 0 8px 0; text-transform: uppercase; }
+    #result-note { font-size: 16px; line-height: 1.4; background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 8px; text-align: left; font-weight: 600; }
 
     /* 各 Priority 顏色定義 */
-    .bg-very-high { background: #1b5e20 !important; border-color: #4caf50 !important; color: #ffffff; } /* Very High 綠色 */
-    .bg-high      { background: #0d47a1 !important; border-color: #2196f3 !important; color: #ffffff; } /* High 藍色 */
-    .bg-medium    { background: #e65100 !important; border-color: #ff9800 !important; color: #ffffff; } /* Medium 黃橙色 */
-    .bg-low       { background: #424242 !important; border-color: #9e9e9e !important; color: #e0e0e0; } /* Low 灰色 */
+    .bg-very-high { background: #1b5e20 !important; border-color: #4caf50 !important; color: #ffffff !important; } /* Very High 綠色 */
+    .bg-high      { background: #0d47a1 !important; border-color: #2196f3 !important; color: #ffffff !important; } /* High 藍色 */
+    .bg-medium    { background: #e65100 !important; border-color: #ff9800 !important; color: #ffffff !important; } /* Medium 黃橙色 */
+    .bg-low       { background: #424242 !important; border-color: #9e9e9e !important; color: #e0e0e0 !important; } /* Low 灰色 */
 
     #status { position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 10; }
   </style>
@@ -71,7 +71,7 @@
   let isProcessing = false;
   let worker = null;
 
-  // 1. 從 Google Sheet 抓取最新 Priority 資料
+  // 1. 從 Google Sheet 精確解析 Model / Retail Price / Priority / Notes
   async function fetchSheetData() {
     try {
       const response = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`);
@@ -80,15 +80,26 @@
       
       const rows = json.table.rows;
       rows.forEach(row => {
-        if (row.c && row.c[0] && row.c[0].v) {
-          const model = String(row.c[0].v).trim().toUpperCase();
-          const note = row.c[1] ? String(row.c[1].v).trim() : '';
-          const priority = row.c[3] ? String(row.c[3].v).trim() : 'Low';
+        if (row.c) {
+          // 動態搜尋該 Row 裡面的欄位資料
+          let rawModel = row.c[0] && row.c[0].v ? String(row.c[0].v).trim() : '';
           
-          if (model.includes('BX') || model.includes('UX')) {
-            // 統一格式為標準 BX-XX 或 UX-XX 鍵值
-            const cleanKey = model.replace(/[^A-Z0-9]/g, '');
-            dbData[cleanKey] = { rawModel: model, priority, note };
+          if (rawModel.includes('BX') || rawModel.includes('UX')) {
+            let price = row.c[2] && row.c[2].v !== null ? String(row.c[2].v).trim() : '';
+            let priority = row.c[3] && row.c[3].v !== null ? String(row.c[3].v).trim() : 'Low';
+            let note = row.c[4] && row.c[4].v !== null ? String(row.c[4].v).trim() : '';
+
+            // 清理 Key 為標準格式 BX09 / UX03
+            const cleanMatch = rawModel.replace(/[^A-Z0-9]/gi, '').toUpperCase().match(/(BX|UX)\d{2}/);
+            if (cleanMatch) {
+              const cleanKey = cleanMatch[0];
+              dbData[cleanKey] = {
+                modelName: rawModel.toUpperCase(),
+                price: price,
+                priority: priority,
+                note: note
+              };
+            }
           }
         }
       });
@@ -117,7 +128,6 @@
   // 3. 初始化 OCR 引擎
   async function initOCR(video) {
     worker = await Tesseract.createWorker('eng');
-    // 只對英文字母、數字和連字號做辨識，大幅提升速度與準確度
     await worker.setParameters({
       tessedit_char_whitelist: 'BXUXbxux-0123456789',
     });
@@ -129,7 +139,6 @@
       if (isProcessing || !worker) return;
       isProcessing = true;
 
-      // 只擷取綠色框框內的畫面，提高解析度與辨識率
       const boxWidth = video.videoWidth * 0.7;
       const boxHeight = video.videoHeight * 0.25;
       const startX = (video.videoWidth - boxWidth) / 2;
@@ -138,15 +147,14 @@
       canvas.width = boxWidth;
       canvas.height = boxHeight;
 
-      // 裁切綠框區域並繪製到 canvas
       ctx.drawImage(video, startX, startY, boxWidth, boxHeight, 0, 0, boxWidth, boxHeight);
 
-      // 影像增強：提高對比度 (二值化處理，讓文字更清晰)
+      // 高度黑白化增強
       const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const data = imgData.data;
       for (let i = 0; i < data.length; i += 4) {
         const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        const color = avg > 110 ? 255 : 0; // 黑白化
+        const color = avg > 115 ? 255 : 0;
         data[i] = color;
         data[i + 1] = color;
         data[i + 2] = color;
@@ -157,47 +165,51 @@
       processOCRText(text);
 
       isProcessing = false;
-    }, 350); // 每 0.35 秒掃瞄一次
+    }, 350);
   }
 
-  // 4. 解析辨識文字並對比清單
+  // 4. 比對與觸發
   function processOCRText(ocrText) {
     if (!ocrText) return;
     const cleanText = ocrText.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-    
-    // 匹配 BX09, UX03, BX-09, UX-03 等格式
     const match = cleanText.match(/(BX|UX)\d{2}/);
     
     if (match) {
-      const detectedKey = match[0]; // e.g. "BX09"
-      
+      const detectedKey = match[0];
       if (dbData[detectedKey]) {
         const item = dbData[detectedKey];
-        showResult(item.rawModel, item.priority, item.note);
+        showResult(item.modelName, item.priority, item.price, item.note);
       }
     }
   }
 
-  // 5. 渲染 UI 與 Priority 顏色
-  function showResult(model, priority, note) {
+  // 5. 顯示結果卡片
+  function showResult(model, priority, price, note) {
     const card = document.getElementById('result-card');
     const modelEl = document.getElementById('result-model');
     const priorityEl = document.getElementById('result-priority');
     const noteEl = document.getElementById('result-note');
 
     modelEl.innerText = model;
-    priorityEl.innerText = priority;
-    noteEl.innerText = note ? `備註：${note}` : '（無備註）';
+    priorityEl.innerText = priority.toUpperCase();
 
-    // 重置背景顏色 Class
+    // 將原價與備註整理在一起顯示
+    let displayText = '';
+    if (price) displayText += `原價：￥${price}`;
+    if (note) displayText += (displayText ? ` | 備註：${note}` : `備註：${note}`);
+    if (!displayText) displayText = '（無價格／備註資料）';
+
+    noteEl.innerText = displayText;
+
+    // 清除舊顏色並根據 Priority 賦予對應顏色
     card.className = '';
-    const prioLower = priority.toLowerCase();
+    const prioCheck = priority.toLowerCase().trim();
 
-    if (prioLower.includes('very high')) {
+    if (prioCheck.includes('very high')) {
       card.classList.add('bg-very-high');
-    } else if (prioLower.includes('high')) {
+    } else if (prioCheck === 'high' || prioCheck.includes('high')) {
       card.classList.add('bg-high');
-    } else if (prioLower.includes('medium')) {
+    } else if (prioCheck.includes('medium')) {
       card.classList.add('bg-medium');
     } else {
       card.classList.add('bg-low');
