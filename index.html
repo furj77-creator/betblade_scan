@@ -193,7 +193,7 @@
       try {
         worker = await Tesseract.createWorker('eng');
         await worker.setParameters({
-          tessedit_char_whitelist: 'BXUXCXbxuxcx-0123456789',
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-',
           tessedit_pageseg_mode: '6',
         });
         setDebugText('✅ OCR 引擎就緒，開始掃瞄...');
@@ -342,15 +342,16 @@
       }
     }
 
-    // 8. 解析辨識結果與配對
+    // 8. 【最新修改】解析辨識文字：嚴格比對 [2個英文]+[可有可無的-]+[2個數字] (例如 XX-YY / XXYY)
     function processOCRText(ocrText) {
       if (!ocrText) return false;
-      const cleanText = ocrText.replace(/[^A-Z0-9]/gi, '').toUpperCase();
 
-      const match = cleanText.match(/(BX|UX|CX)\d{2}/);
+      const cleanText = ocrText.replace(/\s+/g, '').toUpperCase();
+      const match = cleanText.match(/([A-Z]{2})-?(\d{2})/);
+
       if (!match) return false;
 
-      const detectedKey = match[0];
+      const detectedKey = match[1] + match[2];
       const item = dbData[detectedKey];
       if (!item) return false;
 
@@ -389,7 +390,7 @@
       card.style.display = 'block';
     }
 
-    // 10. 【更新】手動輸入：匹配成功或失敗都會清空輸入欄
+    // 10. 手動輸入：匹配成功或失敗都會清空輸入欄
     function setupManualInput() {
       const input = document.getElementById('manual-input');
 
@@ -399,19 +400,15 @@
         const raw = input.value.trim().toUpperCase();
         const cleanKey = raw.replace(/[^A-Z0-9]/g, '');
 
-        // 輸入滿 4 個有效字元（例如 BX01 / UX10）
         if (cleanKey.length >= 4) {
           const item = dbData[cleanKey];
 
           if (item) {
-            // 匹配成功
             showResult(item.rawModel, item.price, item.priority, item.note);
             input.classList.remove('not-found');
-            input.value = ''; // 立即清空輸入欄
+            input.value = '';
           } else {
-            // 匹配失敗
             input.classList.add('not-found');
-            // 顯示紅框提示 0.8 秒後自動清空輸入欄
             clearFailTimer = setTimeout(() => {
               input.value = '';
               input.classList.remove('not-found');
