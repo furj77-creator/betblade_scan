@@ -12,35 +12,29 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #000; color: #fff; overflow: hidden;
       display: flex; flex-direction: column;
-      height: 100vh; height: 100dvh; /* dvh 跟實際可見畫面，vh 做舊機備用 */
+      height: 100vh; height: 100dvh;
     }
 
-    /* 相機區佔晒剩餘空間，input bar 會自然貼喺佢個底，
-       跟實際 browser 可見範圍嘅底部，唔使自己估位/寫死像素 */
     #video-container { position: relative; width: 100%; flex: 1 1 auto; min-height: 0; overflow: hidden; }
     video { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-    /* 掃瞄框指引 + 結果卡片：由上而下排列，結果卡片會顯示在框下面 */
     .overlay {
       position: absolute; top: 12%; left: 0; width: 100%;
       display: flex; flex-direction: column; align-items: center; gap: 14px;
       pointer-events: none; z-index: 5;
     }
-    /* 掃瞄框對準盒身即可，實際辨識鎖定盒底型號色帶，不需要精準對齊文字 */
     .scan-box {
       width: 90vw; height: 62vw; max-width: 400px; max-height: 280px;
       border: 3px dashed #00ffcc; border-radius: 12px;
       box-shadow: 0 0 0 4000px rgba(0, 0, 0, 0.5);
       flex-shrink: 0; position: relative;
     }
-    /* 標示實際鎖定辨識的色帶範圍：型號色帶要放喺呢個黃框入面 */
     .scan-target-band {
       position: absolute; left: 4%; right: 4%; bottom: 4%; height: 26%;
       border: 2px solid rgba(255, 215, 0, 0.85); border-radius: 6px;
       background: rgba(255, 215, 0, 0.08);
     }
 
-    /* 結果卡片：置於掃瞄框正下方 */
     #result-card {
       width: 90vw; max-width: 380px;
       padding: 16px; border-radius: 16px; text-align: center;
@@ -54,17 +48,13 @@
     #result-priority { font-size: 24px; font-weight: 800; margin: 4px 0 8px 0; text-transform: uppercase; }
     #result-note { font-size: 15px; line-height: 1.4; background: rgba(0,0,0,0.25); padding: 8px; border-radius: 8px; text-align: left; }
 
-    /* 各 Priority 顏色定義 */
-    .bg-very-high { background: #1b5e20 !important; border-color: #4caf50 !important; color: #ffffff; } /* Very High 綠色 */
-    .bg-high      { background: #0d47a1 !important; border-color: #2196f3 !important; color: #ffffff; } /* High 藍色 */
-    .bg-medium    { background: #e65100 !important; border-color: #ff9800 !important; color: #ffffff; } /* Medium 黃橙色 */
-    .bg-low       { background: #424242 !important; border-color: #9e9e9e !important; color: #e0e0e0; } /* Low 灰色 */
+    .bg-very-high { background: #1b5e20 !important; border-color: #4caf50 !important; color: #ffffff; }
+    .bg-high      { background: #0d47a1 !important; border-color: #2196f3 !important; color: #ffffff; }
+    .bg-medium    { background: #e65100 !important; border-color: #ff9800 !important; color: #ffffff; }
+    .bg-low       { background: #424242 !important; border-color: #9e9e9e !important; color: #e0e0e0; }
 
     #status { position: absolute; bottom: 12px; left: 15px; background: rgba(0,0,0,0.8); padding: 6px 12px; border-radius: 8px; font-size: 12px; z-index: 10; }
 
-    /* 手動輸入：唔再絕對定位/寫死幾多px，改成正常文件流嘅最後一個區塊，
-       body 高度用 dvh 鎖住實際可見畫面，呢個bar自然貼喺真正嘅底部，唔會被
-       Safari 底部工具列遮住，亦唔會令成頁可以scroll */
     #manual-input-wrap {
       flex: 0 0 auto; width: 100%;
       padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
@@ -80,8 +70,6 @@
     #manual-input.not-found { border-color: #ff5252; }
     #manual-label { font-size: 12px; color: rgba(255,255,255,0.6); white-space: nowrap; }
 
-    /* 偵錯面板：實時顯示「攞去做OCR嗰嚿畫面」同「辨識出嚟嘅原始文字」，
-       等我哋可以親眼確認擷取範圍/二值化係咪啱，唔使再靠估 */
     #debug-panel {
       position: absolute; top: 8px; right: 8px; z-index: 30;
       background: rgba(0,0,0,0.85); border: 1px solid rgba(255,255,255,0.3);
@@ -95,362 +83,347 @@
 </head>
 <body>
 
-<div id="video-container">
-  <video id="webcam" autoplay playsinline muted></video>
+  <div id="video-container">
+    <video id="webcam" autoplay playsinline muted></video>
 
-  <div class="overlay">
-    <div class="scan-box" id="scan-box">
-      <div class="scan-target-band" id="scan-target-band"></div>
+    <div class="overlay">
+      <div class="scan-box" id="scan-box">
+        <div class="scan-target-band" id="scan-target-band"></div>
+      </div>
+      <div id="result-card">
+        <div id="result-model">--</div>
+        <div id="result-price">--</div>
+        <div id="result-priority">--</div>
+        <div id="result-note">--</div>
+      </div>
     </div>
-    <div id="result-card">
-      <div id="result-model">--</div>
-      <div id="result-price">--</div>
-      <div id="result-priority">--</div>
-      <div id="result-note">--</div>
+
+    <div id="status">正在同步 Google Sheet 資料...</div>
+
+    <div id="debug-panel">
+      <canvas id="debug-canvas"></canvas>
+      <div id="debug-text">等待 OCR 引擎啟動...</div>
     </div>
   </div>
 
-  <div id="status">正在同步 Google Sheet 資料...</div>
-
-  <div id="debug-panel">
-    <canvas id="debug-canvas"></canvas>
-    <div id="debug-text">等待 OCR 引擎啟動...</div>
+  <div id="manual-input-wrap">
+    <span id="manual-label">手動輸入</span>
+    <input id="manual-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="例如 BX48 / BX-48" />
   </div>
-</div>
 
-<div id="manual-input-wrap">
-  <span id="manual-label">手動輸入</span>
-  <input id="manual-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" placeholder="例如 BX48 / BX-48" />
-</div>
+  <script>
+    const SHEET_ID = '1wNFpe9U1bgbRGtU6uNlpkpFgrX-ictuisUpOLDqbmG4';
+    let dbData = {};
+    let worker = null;
+    let running = false;
+    let tickCount = 0;
 
-<script>
-  const SHEET_ID = '1wNFpe9U1bgbRGtU6uNlpkpFgrX-ictuisUpOLDqbmG4';
-  let dbData = {};
-  let worker = null;
-  let running = false;
-  let tickCount = 0;
+    const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
-  const sleep = (ms) => new Promise(res => setTimeout(res, ms));
-
-  // 1. 從 Google Sheet 抓取最新 Price / Priority 資料
-  //    Sheet 內有兩個並排表格：A-D 欄（Model / Retail Price / Priority / notes）
-  //    及 H-K 欄（Model / Retail Price / Priority / notes），兩邊都要讀取
-  async function fetchSheetData() {
-    try {
-      const response = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`);
-      const text = await response.text();
-      const json = JSON.parse(text.substring(47, text.length - 2));
-
-      const rows = json.table.rows;
-      const blocks = [
-        { model: 0, price: 1, priority: 2, note: 3 },  // A, B, C, D
-        { model: 7, price: 8, priority: 9, note: 10 }  // H, I, J, K
-      ];
-
-      rows.forEach(row => {
-        if (!row.c) return;
-        blocks.forEach(b => {
-          const modelCell = row.c[b.model];
-          if (!modelCell || modelCell.v === null || modelCell.v === undefined) return;
-
-          const model = String(modelCell.v).trim().toUpperCase();
-          if (!(model.includes('BX') || model.includes('UX') || model.includes('CX'))) return;
-
-          const priceCell = row.c[b.price];
-          const priorityCell = row.c[b.priority];
-          const noteCell = row.c[b.note];
-
-          const price = (priceCell && priceCell.v !== null && priceCell.v !== undefined) ? priceCell.v : null;
-          const priority = (priorityCell && priorityCell.v) ? String(priorityCell.v).trim() : 'Low';
-          const note = (noteCell && noteCell.v) ? String(noteCell.v).trim() : '';
-
-          // 統一格式為標準 BX-XX / UX-XX / CX-XX 鍵值
-          const cleanKey = model.replace(/[^A-Z0-9]/g, '');
-          dbData[cleanKey] = { rawModel: model, price, priority, note };
-        });
-      });
-
-      document.getElementById('status').innerText = '✅ 清單已同步 (已載入 ' + Object.keys(dbData).length + ' 款模型)';
-    } catch (e) {
-      document.getElementById('status').innerText = '❌ 同步失敗，請確認 Sheet 權限';
-    }
-  }
-
-  // 2. 開啟高清鏡頭
-  async function startCamera() {
-    const video = document.getElementById('webcam');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
-      });
-      video.srcObject = stream;
-      video.onloadedmetadata = () => {
-        setDebugText(`鏡頭已啟動 (${video.videoWidth}x${video.videoHeight})，載入 OCR 引擎中...`);
-        initOCR(video);
-      };
-    } catch (err) {
-      setDebugText('❌ 相機錯誤：' + (err && err.message ? err.message : err), true);
-      alert('無法存取相機，請允許相機權限！');
-    }
-  }
-
-  function setDebugText(msg, isErr) {
-    const el = document.getElementById('debug-text');
-    if (!el) return;
-    el.innerText = msg;
-    el.classList.toggle('err', !!isErr);
-  }
-
-  // 3. 初始化 OCR 引擎
-  async function initOCR(video) {
-    try {
-      worker = await Tesseract.createWorker('eng');
-      await worker.setParameters({
-        // 只認型號會出現的字元，減少雜訊干擾
-        tessedit_char_whitelist: 'BXUXCXbxuxcx-0123456789',
-        // 型號色帶通常係「一小段文字區塊」（型號 + 產品名兩行），
-        // 用 6 = 當成單一文字區塊處理，比預設整頁模式快又準
-        tessedit_pageseg_mode: '6',
-      });
-      setDebugText('✅ OCR 引擎就緒，開始掃瞄...');
-      scanLoop(video);
-    } catch (err) {
-      setDebugText('❌ OCR 引擎載入失敗：' + (err && err.message ? err.message : err), true);
-    }
-  }
-
-  // 4. 座標轉換：video 用咗 object-fit:cover，螢幕上見到嘅畫面
-  //    同鏡頭原生解像度嘅畫面唔係1:1對應（cover 會裁走一部分）。
-  //    呢個函數將「畫面上見到嘅某個元素範圍」正確轉換做「鏡頭原生像素座標」，
-  //    確保綠框/黃框對準嘅位置，同真正攞去做 OCR 嗰嚿係同一個地方。
-  function getVideoCropFromElement(video, el) {
-    const vw = video.videoWidth, vh = video.videoHeight;
-    const containerRect = video.getBoundingClientRect();
-    const cw = containerRect.width, ch = containerRect.height;
-    if (!vw || !vh || !cw || !ch) return null;
-
-    const scale = Math.max(cw / vw, ch / vh);
-    const displayedW = vw * scale, displayedH = vh * scale;
-    const offsetX = (displayedW - cw) / 2;
-    const offsetY = (displayedH - ch) / 2;
-
-    const elRect = el.getBoundingClientRect();
-    const relLeft = elRect.left - containerRect.left;
-    const relTop = elRect.top - containerRect.top;
-
-    let x = (relLeft + offsetX) / scale;
-    let y = (relTop + offsetY) / scale;
-    let w = elRect.width / scale;
-    let h = elRect.height / scale;
-
-    // 邊界保護
-    x = Math.max(0, x);
-    y = Math.max(0, y);
-    w = Math.min(vw - x, w);
-    h = Math.min(vh - y, h);
-
-    return { x, y, w, h };
-  }
-
-  // 5. Otsu 自動二值化門檻 + 自動判斷是否需要反色
-  //    盒底色帶可能係深色底白字（例：藍底白字），也可能係淺色底深字，
-  //    Otsu 可以自動找到最佳分界點，再用「面積佔多數 = 底色」的邏輯自動反色，
-  //    確保最終永遠輸出「白底黑字」餵俾 Tesseract（辨識率最好的格式）
-  function otsuBinarizeAndInvert(imgData) {
-    const data = imgData.data;
-    const hist = new Array(256).fill(0);
-    const grayVals = new Uint8ClampedArray(data.length / 4);
-
-    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
-      const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
-      grayVals[p] = gray;
-      hist[Math.floor(gray)]++;
-    }
-
-    const total = grayVals.length;
-    let sum = 0;
-    for (let t = 0; t < 256; t++) sum += t * hist[t];
-
-    let sumB = 0, wB = 0, varMax = 0, threshold = 128;
-    for (let t = 0; t < 256; t++) {
-      wB += hist[t];
-      if (wB === 0) continue;
-      const wF = total - wB;
-      if (wF === 0) break;
-      sumB += t * hist[t];
-      const mB = sumB / wB;
-      const mF = (sum - sumB) / wF;
-      const varBetween = wB * wF * (mB - mF) * (mB - mF);
-      if (varBetween > varMax) {
-        varMax = varBetween;
-        threshold = t;
-      }
-    }
-
-    let darkCount = 0;
-    for (let p = 0; p < total; p++) {
-      if (grayVals[p] <= threshold) darkCount++;
-    }
-    const lightCount = total - darkCount;
-    const invert = darkCount > lightCount;
-
-    for (let i = 0, p = 0; i < data.length; i += 4, p++) {
-      let isDark = grayVals[p] <= threshold;
-      if (invert) isDark = !isDark;
-      const color = isDark ? 0 : 255;
-      data[i] = color; data[i + 1] = color; data[i + 2] = color;
-    }
-
-    return imgData;
-  }
-
-  // 6. 擷取指定 DOM 元素對應嘅原生像素範圍並做 OCR，回傳是否已成功配對顯示
-  async function scanElement(video, canvas, ctx, el, label) {
-    const crop = getVideoCropFromElement(video, el);
-    if (!crop || crop.w <= 0 || crop.h <= 0) {
-      setDebugText(`[${label}] 攞唔到擷取範圍 (crop=${JSON.stringify(crop)})`, true);
-      return false;
-    }
-
-    const scale = crop.h < 220 ? 2 : 1;
-    canvas.width = crop.w * scale;
-    canvas.height = crop.h * scale;
-
-    ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, canvas.width, canvas.height);
-
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    otsuBinarizeAndInvert(imgData);
-    ctx.putImageData(imgData, 0, 0);
-
-    // 將實際攞去做OCR嗰嚿畫面畫落偵錯面板，等使用者親眼睇到擷取範圍/二值化效果
-    const dbgCanvas = document.getElementById('debug-canvas');
-    if (dbgCanvas) {
-      dbgCanvas.width = canvas.width;
-      dbgCanvas.height = canvas.height;
-      const dbgCtx = dbgCanvas.getContext('2d');
-      dbgCtx.drawImage(canvas, 0, 0);
-    }
-
-    try {
-      const { data: { text } } = await worker.recognize(canvas);
-      const cleaned = (text || '').replace(/\s+/g, ' ').trim();
-      const matched = processOCRText(text);
-      setDebugText(`[${label}] 辨識到: "${cleaned || '(空白)'}"${matched ? ' ✅ 命中!' : ''}`);
-      return matched;
-    } catch (err) {
-      setDebugText(`[${label}] ❌ OCR辨識錯誤: ` + (err && err.message ? err.message : err), true);
-      return false;
-    }
-  }
-
-  // 7. 主掃瞄迴圈：優先鎖定黃框（型號色帶），
-  //    每 3 次額外掃一次整個綠框當備援，避免色帶位置跟參考圖略有出入時完全掃不到
-  async function scanLoop(video) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const targetBandEl = document.getElementById('scan-target-band');
-    const scanBoxEl = document.getElementById('scan-box');
-    running = true;
-
-    while (running) {
-      tickCount++;
+    // 1. 同步 Google Sheet 資料
+    async function fetchSheetData() {
       try {
-        let matched = await scanElement(video, canvas, ctx, targetBandEl, '黃框');
+        const response = await fetch(`https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json`);
+        const text = await response.text();
+        const json = JSON.parse(text.substring(47, text.length - 2));
 
-        if (!matched && tickCount % 3 === 0) {
-          matched = await scanElement(video, canvas, ctx, scanBoxEl, '綠框備援');
-        }
+        const rows = json.table.rows;
+        const blocks = [
+          { model: 0, price: 1, priority: 2, note: 3 },  // A, B, C, D
+          { model: 7, price: 8, priority: 9, note: 10 }  // H, I, J, K
+        ];
+
+        rows.forEach(row => {
+          if (!row.c) return;
+          blocks.forEach(b => {
+            const modelCell = row.c[b.model];
+            if (!modelCell || modelCell.v === null || modelCell.v === undefined) return;
+
+            const model = String(modelCell.v).trim().toUpperCase();
+            if (!(model.includes('BX') || model.includes('UX') || model.includes('CX'))) return;
+
+            const priceCell = row.c[b.price];
+            const priorityCell = row.c[b.priority];
+            const noteCell = row.c[b.note];
+
+            const price = (priceCell && priceCell.v !== null && priceCell.v !== undefined) ? priceCell.v : null;
+            const priority = (priorityCell && priorityCell.v) ? String(priorityCell.v).trim() : 'Low';
+            const note = (noteCell && noteCell.v) ? String(noteCell.v).trim() : '';
+
+            const cleanKey = model.replace(/[^A-Z0-9]/g, '');
+            dbData[cleanKey] = { rawModel: model, price, priority, note };
+          });
+        });
+
+        document.getElementById('status').innerText = '✅ 清單已同步 (已載入 ' + Object.keys(dbData).length + ' 款模型)';
+      } catch (e) {
+        document.getElementById('status').innerText = '❌ 同步失敗，請確認 Sheet 權限';
+      }
+    }
+
+    // 2. 開啟鏡頭
+    async function startCamera() {
+      const video = document.getElementById('webcam');
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+        });
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          setDebugText(`鏡頭已啟動 (${video.videoWidth}x${video.videoHeight})，載入 OCR 引擎中...`);
+          initOCR(video);
+        };
       } catch (err) {
-        // 保護迴圈本身唔會因為單次錯誤而完全停止掃瞄
-        setDebugText('❌ 掃瞄迴圈錯誤：' + (err && err.message ? err.message : err), true);
+        setDebugText('❌ 相機錯誤：' + (err && err.message ? err.message : err), true);
+        alert('無法存取相機，請允許相機權限！');
       }
-
-      await sleep(120);
-    }
-  }
-
-  // 8. 解析辨識文字並對比清單
-  function processOCRText(ocrText) {
-    if (!ocrText) return false;
-    const cleanText = ocrText.replace(/[^A-Z0-9]/gi, '').toUpperCase();
-
-    // 匹配 BX09, UX03, CX11, BX-09, UX-03 等格式（容許無連字號）
-    const match = cleanText.match(/(BX|UX|CX)\d{2}/);
-    if (!match) return false;
-
-    const detectedKey = match[0];
-    const item = dbData[detectedKey];
-    if (!item) return false;
-
-    showResult(item.rawModel, item.price, item.priority, item.note);
-    return true;
-  }
-
-  // 9. 渲染 UI 與 Priority 顏色
-  function showResult(model, price, priority, note) {
-    const card = document.getElementById('result-card');
-    const modelEl = document.getElementById('result-model');
-    const priceEl = document.getElementById('result-price');
-    const priorityEl = document.getElementById('result-priority');
-    const noteEl = document.getElementById('result-note');
-
-    modelEl.innerText = model;
-    priceEl.innerText = (price !== null && price !== undefined && price !== '')
-      ? `原價：¥${Number(price).toLocaleString()}`
-      : '原價：--';
-    priorityEl.innerText = priority;
-    noteEl.innerText = note ? `備註：${note}` : '（無備註）';
-
-    card.className = '';
-    const prioLower = priority.toLowerCase();
-
-    if (prioLower.includes('very high')) {
-      card.classList.add('bg-very-high');
-    } else if (prioLower.includes('high')) {
-      card.classList.add('bg-high');
-    } else if (prioLower.includes('medium')) {
-      card.classList.add('bg-medium');
-    } else {
-      card.classList.add('bg-low');
     }
 
-    card.style.display = 'block';
-  }
+    function setDebugText(msg, isErr) {
+      const el = document.getElementById('debug-text');
+      if (!el) return;
+      el.innerText = msg;
+      el.classList.toggle('err', !!isErr);
+    }
 
-  // 10. 手動輸入：無視 "-"、大小寫，一打齊型號（2個英文字+2個數字）就即時顯示結果，
-  //     顯示之後立即清空輸入欄，但結果卡片繼續留喺畫面，直到下一次掃瞄/輸入配對成功為止
-  function setupManualInput() {
-    const input = document.getElementById('manual-input');
+    // 3. 初始化 OCR
+    async function initOCR(video) {
+      try {
+        worker = await Tesseract.createWorker('eng');
+        await worker.setParameters({
+          tessedit_char_whitelist: 'BXUXCXbxuxcx-0123456789',
+          tessedit_pageseg_mode: '6',
+        });
+        setDebugText('✅ OCR 引擎就緒，開始掃瞄...');
+        scanLoop(video);
+      } catch (err) {
+        setDebugText('❌ OCR 引擎載入失敗：' + (err && err.message ? err.message : err), true);
+      }
+    }
 
-    input.addEventListener('input', () => {
-      const clean = input.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-      const match = clean.match(/^(BX|UX|CX)(\d{2})$/);
-      if (!match) {
-        input.classList.remove('not-found');
-        return;
+    // 4. 畫面上元素轉原生鏡頭座標
+    function getVideoCropFromElement(video, el) {
+      const vw = video.videoWidth, vh = video.videoHeight;
+      const containerRect = video.getBoundingClientRect();
+      const cw = containerRect.width, ch = containerRect.height;
+      if (!vw || !vh || !cw || !ch) return null;
+
+      const scale = Math.max(cw / vw, ch / vh);
+      const displayedW = vw * scale, displayedH = vh * scale;
+      const offsetX = (displayedW - cw) / 2;
+      const offsetY = (displayedH - ch) / 2;
+
+      const elRect = el.getBoundingClientRect();
+      const relLeft = elRect.left - containerRect.left;
+      const relTop = elRect.top - containerRect.top;
+
+      let x = (relLeft + offsetX) / scale;
+      let y = (relTop + offsetY) / scale;
+      let w = elRect.width / scale;
+      let h = elRect.height / scale;
+
+      x = Math.max(0, x);
+      y = Math.max(0, y);
+      w = Math.min(vw - x, w);
+      h = Math.min(vh - y, h);
+
+      return { x, y, w, h };
+    }
+
+    // 5. 【關鍵核心修改】使用 Channel-Min 二值化專門鎖定白色字，配合 Otsu 自動黑白反相
+    function channelMinBinarizeAndInvert(imgData) {
+      const data = imgData.data;
+      const hist = new Array(256).fill(0);
+      const minVals = new Uint8ClampedArray(data.length / 4);
+
+      // 取 R, G, B 中的最小值：白字 (high R, G, B) 保留高數值；藍/紅/彩色底則會大幅變低
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        const minVal = Math.min(data[i], data[i + 1], data[i + 2]);
+        minVals[p] = minVal;
+        hist[minVal]++;
       }
 
-      const key = match[1] + match[2];
-      const item = dbData[key];
+      const total = minVals.length;
+      let sum = 0;
+      for (let t = 0; t < 256; t++) sum += t * hist[t];
 
-      if (item) {
-        showResult(item.rawModel, item.price, item.priority, item.note);
-        input.value = '';
-        input.classList.remove('not-found');
+      // Otsu 自動閾值計算
+      let sumB = 0, wB = 0, varMax = 0, threshold = 128;
+      for (let t = 0; t < 256; t++) {
+        wB += hist[t];
+        if (wB === 0) continue;
+        const wF = total - wB;
+        if (wF === 0) break;
+        sumB += t * hist[t];
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+        const varBetween = wB * wF * (mB - mF) * (mB - mF);
+        if (varBetween > varMax) {
+          varMax = varBetween;
+          threshold = t;
+        }
+      }
+
+      // 自動判斷背景佔比並進行反向，確保輸出必定為「白底黑字」
+      let darkCount = 0;
+      for (let p = 0; p < total; p++) {
+        if (minVals[p] <= threshold) darkCount++;
+      }
+      const lightCount = total - darkCount;
+      const invert = darkCount > lightCount; // 背景偏深時自動反轉為白底黑字
+
+      for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+        let isDark = minVals[p] <= threshold;
+        if (invert) isDark = !isDark;
+        const color = isDark ? 0 : 255;
+        data[i] = color; data[i + 1] = color; data[i + 2] = color;
+      }
+
+      return imgData;
+    }
+
+    // 6. 擷取範圍並做 OCR 辨識
+    async function scanElement(video, canvas, ctx, el, label) {
+      const crop = getVideoCropFromElement(video, el);
+      if (!crop || crop.w <= 0 || crop.h <= 0) {
+        setDebugText(`[${label}] 攞唔到擷取範圍`, true);
+        return false;
+      }
+
+      // 放大圖元提升小字體 OCR 辨識率
+      const scale = crop.h < 220 ? 2 : 1;
+      canvas.width = crop.w * scale;
+      canvas.height = crop.h * scale;
+
+      ctx.drawImage(video, crop.x, crop.y, crop.w, crop.h, 0, 0, canvas.width, canvas.height);
+
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      channelMinBinarizeAndInvert(imgData);
+      ctx.putImageData(imgData, 0, 0);
+
+      // 即時畫入右上方 Debug 面板
+      const dbgCanvas = document.getElementById('debug-canvas');
+      if (dbgCanvas) {
+        dbgCanvas.width = canvas.width;
+        dbgCanvas.height = canvas.height;
+        const dbgCtx = dbgCanvas.getContext('2d');
+        dbgCtx.drawImage(canvas, 0, 0);
+      }
+
+      try {
+        const { data: { text } } = await worker.recognize(canvas);
+        const cleaned = (text || '').replace(/\s+/g, ' ').trim();
+        const matched = processOCRText(text);
+        setDebugText(`[${label}] 辨識到: "${cleaned || '(空白)'}"${matched ? ' ✅ 命中!' : ''}`);
+        return matched;
+      } catch (err) {
+        setDebugText(`[${label}] ❌ OCR辨識錯誤: ` + (err && err.message ? err.message : err), true);
+        return false;
+      }
+    }
+
+    // 7. 掃瞄迴圈
+    async function scanLoop(video) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const targetBandEl = document.getElementById('scan-target-band');
+      const scanBoxEl = document.getElementById('scan-box');
+      running = true;
+
+      while (running) {
+        tickCount++;
+        try {
+          // 優先掃黃框（色帶區域）
+          let matched = await scanElement(video, canvas, ctx, targetBandEl, '黃框');
+
+          // 每 3 次失敗備援掃一遍大綠框
+          if (!matched && tickCount % 3 === 0) {
+            matched = await scanElement(video, canvas, ctx, scanBoxEl, '綠框備援');
+          }
+        } catch (err) {
+          setDebugText('❌ 掃瞄迴圈錯誤：' + (err && err.message ? err.message : err), true);
+        }
+
+        await sleep(120);
+      }
+    }
+
+    // 8. 解析辨識結果與配對
+    function processOCRText(ocrText) {
+      if (!ocrText) return false;
+      const cleanText = ocrText.replace(/[^A-Z0-9]/gi, '').toUpperCase();
+
+      const match = cleanText.match(/(BX|UX|CX)\d{2}/);
+      if (!match) return false;
+
+      const detectedKey = match[0];
+      const item = dbData[detectedKey];
+      if (!item) return false;
+
+      showResult(item.rawModel, item.price, item.priority, item.note);
+      return true;
+    }
+
+    // 9. 顯示結果卡片
+    function showResult(model, price, priority, note) {
+      const card = document.getElementById('result-card');
+      const modelEl = document.getElementById('result-model');
+      const priceEl = document.getElementById('result-price');
+      const priorityEl = document.getElementById('result-priority');
+      const noteEl = document.getElementById('result-note');
+
+      modelEl.innerText = model;
+      priceEl.innerText = (price !== null && price !== undefined && price !== '')
+        ? `原價：¥${Number(price).toLocaleString()}`
+        : '原價：--';
+      priorityEl.innerText = priority;
+      noteEl.innerText = note ? `備註：${note}` : '（無備註）';
+
+      card.className = '';
+      const prioLower = priority.toLowerCase();
+
+      if (prioLower.includes('very high')) {
+        card.classList.add('bg-very-high');
+      } else if (prioLower.includes('high')) {
+        card.classList.add('bg-high');
+      } else if (prioLower.includes('medium')) {
+        card.classList.add('bg-medium');
       } else {
-        // 型號格式啱，但清單搵唔到 -> 提示一下再清空，結果卡片維持原狀唔變
-        input.classList.add('not-found');
-        setTimeout(() => {
-          input.value = '';
-          input.classList.remove('not-found');
-        }, 500);
+        card.classList.add('bg-low');
       }
-    });
-  }
 
-  fetchSheetData();
-  startCamera();
-  setupManualInput();
-</script>
+      card.style.display = 'block';
+    }
+
+    // 10. 手動輸入邏輯
+    function setupManualInput() {
+      const input = document.getElementById('manual-input');
+
+      input.addEventListener('input', () => {
+        const raw = input.value.trim().toUpperCase();
+        const cleanKey = raw.replace(/[^A-Z0-9]/g, '');
+
+        if (cleanKey.length >= 4) {
+          const item = dbData[cleanKey];
+          if (item) {
+            showResult(item.rawModel, item.price, item.priority, item.note);
+            input.classList.remove('not-found');
+            input.value = ''; // 匹配成功後清空，保留結果卡片
+          } else {
+            input.classList.add('not-found');
+          }
+        } else {
+          input.classList.remove('not-found');
+        }
+      });
+    }
+
+    // 頁面啟動
+    window.addEventListener('DOMContentLoaded', async () => {
+      setupManualInput();
+      await fetchSheetData();
+      await startCamera();
+    });
+  </script>
 </body>
 </html>
