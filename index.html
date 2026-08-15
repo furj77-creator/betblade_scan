@@ -65,6 +65,7 @@
       flex: 1; padding: 14px 14px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.35);
       background: rgba(255,255,255,0.08); color: #fff; font-size: 17px; outline: none;
       text-transform: uppercase;
+      transition: border-color 0.2s ease;
     }
     #manual-input::placeholder { color: rgba(255,255,255,0.45); }
     #manual-input.not-found { border-color: #ff5252; }
@@ -117,6 +118,7 @@
     let worker = null;
     let running = false;
     let tickCount = 0;
+    let clearFailTimer = null;
 
     const sleep = (ms) => new Promise(res => setTimeout(res, ms));
 
@@ -201,7 +203,7 @@
       }
     }
 
-    // 4. 畫面上元素轉原生鏡頭座標
+    // 4. 座標轉換
     function getVideoCropFromElement(video, el) {
       const vw = video.videoWidth, vh = video.videoHeight;
       const containerRect = video.getBoundingClientRect();
@@ -230,13 +232,12 @@
       return { x, y, w, h };
     }
 
-    // 5. 【關鍵核心修改】使用 Channel-Min 二值化專門鎖定白色字，配合 Otsu 自動黑白反相
+    // 5. Channel-Min 二值化
     function channelMinBinarizeAndInvert(imgData) {
       const data = imgData.data;
       const hist = new Array(256).fill(0);
       const minVals = new Uint8ClampedArray(data.length / 4);
 
-      // 取 R, G, B 中的最小值：白字 (high R, G, B) 保留高數值；藍/紅/彩色底則會大幅變低
       for (let i = 0, p = 0; i < data.length; i += 4, p++) {
         const minVal = Math.min(data[i], data[i + 1], data[i + 2]);
         minVals[p] = minVal;
@@ -247,7 +248,6 @@
       let sum = 0;
       for (let t = 0; t < 256; t++) sum += t * hist[t];
 
-      // Otsu 自動閾值計算
       let sumB = 0, wB = 0, varMax = 0, threshold = 128;
       for (let t = 0; t < 256; t++) {
         wB += hist[t];
@@ -264,13 +264,12 @@
         }
       }
 
-      // 自動判斷背景佔比並進行反向，確保輸出必定為「白底黑字」
       let darkCount = 0;
       for (let p = 0; p < total; p++) {
         if (minVals[p] <= threshold) darkCount++;
       }
       const lightCount = total - darkCount;
-      const invert = darkCount > lightCount; // 背景偏深時自動反轉為白底黑字
+      const invert = darkCount > lightCount;
 
       for (let i = 0, p = 0; i < data.length; i += 4, p++) {
         let isDark = minVals[p] <= threshold;
@@ -290,7 +289,6 @@
         return false;
       }
 
-      // 放大圖元提升小字體 OCR 辨識率
       const scale = crop.h < 220 ? 2 : 1;
       canvas.width = crop.w * scale;
       canvas.height = crop.h * scale;
@@ -301,7 +299,6 @@
       channelMinBinarizeAndInvert(imgData);
       ctx.putImageData(imgData, 0, 0);
 
-      // 即時畫入右上方 Debug 面板
       const dbgCanvas = document.getElementById('debug-canvas');
       if (dbgCanvas) {
         dbgCanvas.width = canvas.width;
@@ -333,10 +330,7 @@
       while (running) {
         tickCount++;
         try {
-          // 優先掃黃框（色帶區域）
           let matched = await scanElement(video, canvas, ctx, targetBandEl, '黃框');
-
-          // 每 3 次失敗備援掃一遍大綠框
           if (!matched && tickCount % 3 === 0) {
             matched = await scanElement(video, canvas, ctx, scanBoxEl, '綠框備援');
           }
@@ -395,22 +389,33 @@
       card.style.display = 'block';
     }
 
-    // 10. 手動輸入邏輯
+    // 10. 【更新】手動輸入：匹配成功或失敗都會清空輸入欄
     function setupManualInput() {
       const input = document.getElementById('manual-input');
 
       input.addEventListener('input', () => {
+        if (clearFailTimer) clearTimeout(clearFailTimer);
+
         const raw = input.value.trim().toUpperCase();
         const cleanKey = raw.replace(/[^A-Z0-9]/g, '');
 
+        // 輸入滿 4 個有效字元（例如 BX01 / UX10）
         if (cleanKey.length >= 4) {
           const item = dbData[cleanKey];
+
           if (item) {
+            // 匹配成功
             showResult(item.rawModel, item.price, item.priority, item.note);
             input.classList.remove('not-found');
-            input.value = ''; // 匹配成功後清空，保留結果卡片
+            input.value = ''; // 立即清空輸入欄
           } else {
+            // 匹配失敗
             input.classList.add('not-found');
+            // 顯示紅框提示 0.8 秒後自動清空輸入欄
+            clearFailTimer = setTimeout(() => {
+              input.value = '';
+              input.classList.remove('not-found');
+            }, 800);
           }
         } else {
           input.classList.remove('not-found');
